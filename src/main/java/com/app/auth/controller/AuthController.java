@@ -13,6 +13,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
 import com.app.auth.dto.UserIdResponse;
 
+import com.app.auth.dto.VendorSignupRequest;
+import com.app.auth.dto.VerifyOtpRequest;
+
 
 @RestController
 @RequestMapping("/api/auth")
@@ -58,6 +61,27 @@ public class AuthController {
         return ResponseEntity.ok(new UserIdResponse(userId));
     }
 
+
+
+    @PostMapping("/vendor/signup/request-otp")
+    public ResponseEntity<String> requestVendorSignupOtp(
+            @RequestBody VendorSignupRequest request) {
+
+        authService.sendVendorSignupOtp(request);
+
+        return ResponseEntity.ok("OTP sent to email");
+    }
+
+
+
+    @PostMapping("/vendor/signup/verify-otp")
+    public ResponseEntity<AuthResponse> verifyVendorSignupOtp(
+            @RequestBody VerifyOtpRequest request) {
+
+        return ResponseEntity.ok(
+                authService.verifyVendorSignupOtp(request)
+        );
+    }
 
 
 

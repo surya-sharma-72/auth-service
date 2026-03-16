@@ -1,10 +1,7 @@
 package com.app.auth.service;
 
 import com.app.auth.config.JwtService;
-import com.app.auth.dto.AuthResponse;
-import com.app.auth.dto.LoginRequest;
-import com.app.auth.dto.OtpLoginRequest;
-import com.app.auth.dto.RegisterRequest;
+import com.app.auth.dto.*;
 import com.app.auth.entity.Role;
 import com.app.auth.entity.User;
 import com.app.auth.exception.UserAlreadyExistsException;
@@ -16,6 +13,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import com.app.auth.entity.Otp;
+import com.app.auth.repository.OtpRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +35,9 @@ public class AuthService {
     private final JwtService jwtService;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+
+    private final OtpRepository otpRepository;
+    private final EmailService emailService;
 
 
     // LOGIN WITH EMAIL OR PHONE + PASSWORD
@@ -97,6 +100,79 @@ public class AuthService {
 
         userRepository.save(user);
     }
+
+
+    public void sendVendorSignupOtp(VendorSignupRequest request) {
+
+        if (!request.password().equals(request.confirmPassword())) {
+            throw new RuntimeException("Passwords do not match");
+        }
+
+        if (userRepository.existsByEmail(request.email())) {
+            throw new UserAlreadyExistsException("Email already registered");
+        }
+
+        String otp = String.valueOf((int)(Math.random() * 900000) + 100000);
+
+        Otp otpEntity = Otp.builder()
+                .email(request.email())
+                .password(passwordEncoder.encode(request.password()))
+                .otpCode(otp)
+                .purpose("VENDOR_SIGNUP")
+                .verified(false)
+                .expiresAt(java.time.LocalDateTime.now().plusMinutes(5))
+                .build();
+
+        otpRepository.save(otpEntity);
+
+        emailService.sendOtp(request.email(), otp);
+    }
+
+
+
+
+
+
+    public AuthResponse verifyVendorSignupOtp(VerifyOtpRequest request) {
+
+        Otp otp = otpRepository
+                .findTopByEmailAndPurposeOrderByCreatedAtDesc(
+                        request.email(),
+                        "VENDOR_SIGNUP"
+                )
+                .orElseThrow(() ->
+                        new RuntimeException("OTP not found"));
+
+        if (otp.getExpiresAt().isBefore(java.time.LocalDateTime.now())) {
+            throw new RuntimeException("OTP expired");
+        }
+
+        if (!otp.getOtpCode().equals(request.otp())) {
+            throw new RuntimeException("Invalid OTP");
+        }
+
+        Role vendorRole = roleRepository.findByName("VENDOR")
+                .orElseThrow(() ->
+                        new RuntimeException("Vendor role not found"));
+
+        User user = User.builder()
+                .email(otp.getEmail())
+                .password(otp.getPassword())
+                .role(vendorRole)
+                .enabled(false) // important
+                .build();
+
+        userRepository.save(user);
+
+        String token = jwtService.generateToken(user);
+
+        return AuthResponse.builder()
+                .token(token)
+                .build();
+    }
+
+
+
 
 
     // OTP LOGIN (DEV MODE)
